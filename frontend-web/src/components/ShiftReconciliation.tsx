@@ -44,11 +44,128 @@ export const ShiftReconciliation: React.FC<ShiftReconciliationProps> = ({
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<any>(null);
 
+  const handlePrintInvoice = (o: any) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>DELIVERY CHALLAN & INVOICE - #${o.id.slice(0,8).toUpperCase()}</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #333; padding: 30px; line-height: 1.4; }
+            .header-table { width: 100%; border: none; margin-bottom: 30px; }
+            .title { font-size: 24px; font-weight: bold; text-transform: uppercase; color: #007aff; }
+            .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+            .meta-table td { padding: 5px 0; font-size: 13px; }
+            .invoice-table { width: 100%; border-collapse: collapse; margin-bottom: 35px; }
+            .invoice-table th { background: #f2f2f2; font-size: 12px; font-weight: bold; text-transform: uppercase; padding: 10px; border: 1px solid #ddd; text-align: left; }
+            .invoice-table td { font-size: 13px; padding: 10px; border: 1px solid #ddd; }
+            .total-row { font-weight: bold; background: #fafafa; }
+            .notes-box { background: #f9f9f9; border: 1px solid #eee; padding: 15px; border-radius: 5px; font-size: 12px; margin-bottom: 40px; }
+            .footer { display: flex; justify-content: space-between; margin-top: 50px; font-size: 13px; text-align: center; }
+            .sig-line { border-top: 1px solid #333; width: 200px; margin-top: 50px; padding-top: 5px; }
+          </style>
+        </head>
+        <body onload="window.print(); window.close();">
+          <table class="header-table">
+            <tr>
+              <td>
+                <div class="title">Raza Gas Pvt Ltd</div>
+                <div style="font-size: 12px; color: #666; margin-top: 4px;">Karachi, Pakistan</div>
+                <div style="font-size: 12px; color: #666;">Phone: 0340-2696414 | Email: accounts@razagas.com</div>
+              </td>
+              <td style="text-align: right; vertical-align: top;">
+                <h2 style="margin: 0; font-size: 18px; color: #555;">DELIVERY CHALLAN & INVOICE</h2>
+                <div style="font-size: 13px; font-weight: bold; margin-top: 5px;">No: DC-${o.id.slice(0,8).toUpperCase()}</div>
+              </td>
+            </tr>
+          </table>
+
+          <hr style="border: 0; border-top: 1px solid #eee; margin-bottom: 20px;" />
+
+          <table style="width: 100%; margin-bottom: 30px; font-size: 13px;">
+            <tr>
+              <td style="width: 50%; vertical-align: top;">
+                <h4 style="margin: 0 0 5px 0; color: #666; font-size: 11px; text-transform: uppercase;">Customer Details</h4>
+                <strong>${o.customer?.name || 'Walk-in Customer'}</strong><br />
+                Address: ${o.customer?.address || 'N/A'}<br />
+                Phone: ${o.customer?.phoneNumber || 'N/A'}
+              </td>
+              <td style="width: 50%; vertical-align: top; text-align: right;">
+                <h4 style="margin: 0 0 5px 0; color: #666; font-size: 11px; text-transform: uppercase;">Delivery Information</h4>
+                <strong>Date:</strong> ${o.deliveredAt ? new Date(o.deliveredAt).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB')}<br />
+                <strong>Driver Name:</strong> ${detailedShift?.driverName || 'N/A'}<br />
+                <strong>Payment Method:</strong> ${o.paymentTerms || 'CREDIT'}
+              </td>
+            </tr>
+          </table>
+
+          <table class="invoice-table">
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th style="text-align: center;">Qty (45.2 KG LPG)</th>
+                <th style="text-align: right;">Unit Price</th>
+                <th style="text-align: right;">Total Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>LPG Commercial Cylinder Refill (45.2 KG)</td>
+                <td style="text-align: center;">${o.quantity}</td>
+                <td style="text-align: right;">Rs. ${o.unitPrice ? o.unitPrice.toLocaleString() : (o.totalAmount / o.quantity).toLocaleString()}</td>
+                <td style="text-align: right;">Rs. ${o.totalAmount.toLocaleString()}</td>
+              </tr>
+              <tr class="total-row">
+                <td colspan="3" style="text-align: right;">Net Amount Payable:</td>
+                <td style="text-align: right; color: #007aff;">Rs. ${o.totalAmount.toLocaleString()}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          ${o.notes ? `
+            <div class="notes-box">
+              <strong>Delivery Notes / Details:</strong> ${o.notes}
+            </div>
+          ` : ''}
+
+          <div class="footer">
+            <div>
+              <div class="sig-line">Prepared By (Driver/Rep)</div>
+            </div>
+            <div>
+              <div class="sig-line">Customer Signature & Stamp</div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   const activeShift = shifts.find((s) => s.id === selectedShiftId);
 
   const calculateExpectedEmpties = () => {
-    if (!activeShift) return 0;
-    return activeShift.startEmptyCylinders;
+    if (!detailedShift) return activeShift?.startEmptyCylinders || 0;
+    const recoveredEmpties = detailedShift.cylinderLedgers?.reduce((sum: number, l: any) => {
+      if (l.transactionType === 'EMPTY_RECOVERY_FROM_CUSTOMER') {
+        return sum + l.emptyDelta;
+      }
+      return sum;
+    }, 0) || 0;
+    return (detailedShift.startEmptyCylinders || 0) + recoveredEmpties;
+  };
+
+  const calculateExpectedFulls = () => {
+    if (!detailedShift) return activeShift?.startFullCylinders || 0;
+    const deliveredFulls = detailedShift.orders?.reduce((sum: number, o: any) => {
+      if (o.status === 'DELIVERED_UNVERIFIED' || o.status === 'COMPLETED') {
+        return sum + o.quantity;
+      }
+      return sum;
+    }, 0) || 0;
+    return Math.max(0, (detailedShift.startFullCylinders || 0) - deliveredFulls);
   };
 
   const handleSelectShift = async (id: string) => {
@@ -56,8 +173,8 @@ export const ShiftReconciliation: React.FC<ShiftReconciliationProps> = ({
     const s = shifts.find((x) => x.id === id);
     if (s) {
       setPhysicalCashCollected(s.expectedCash);
-      setEndFullCylinders(s.startFullCylinders - 5 >= 0 ? s.startFullCylinders - 5 : 0); 
-      setEndEmptyCylinders(4);
+      setEndFullCylinders(s.startFullCylinders); 
+      setEndEmptyCylinders(s.startEmptyCylinders);
       setNotes('');
       setResult(null);
       setDetailedShift(null);
@@ -75,6 +192,14 @@ export const ShiftReconciliation: React.FC<ShiftReconciliationProps> = ({
       }
     }
   };
+
+  // Pre-populate input fields dynamically when detailed shift is loaded
+  React.useEffect(() => {
+    if (detailedShift) {
+      setEndFullCylinders(calculateExpectedFulls());
+      setEndEmptyCylinders(calculateExpectedEmpties());
+    }
+  }, [detailedShift]);
 
   const handleApproveReconciliation = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -224,8 +349,25 @@ export const ShiftReconciliation: React.FC<ShiftReconciliationProps> = ({
                           }}
                         >
                           <div>
-                            <div style={{ fontWeight: 600, fontSize: '0.8rem' }}>
-                              Order to Customer ID: {o.customerId.slice(0, 8)}
+                            <div style={{ fontWeight: 600, fontSize: '0.8rem', display: 'flex', alignItems: 'center' }}>
+                              Order to: {o.customer?.name || o.customerId.slice(0, 8)}
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() => handlePrintInvoice(o)}
+                                style={{ 
+                                  padding: '0.15rem 0.4rem', 
+                                  fontSize: '0.65rem', 
+                                  marginLeft: '0.5rem', 
+                                  background: 'rgba(255,255,255,0.05)', 
+                                  border: '1px solid var(--border-color)', 
+                                  color: 'var(--text-main)',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer' 
+                                }}
+                              >
+                                Print Invoice
+                              </button>
                             </div>
                             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
                               Quantity: {o.quantity} Cylinders | Payment: {o.paymentTerms}
@@ -347,12 +489,21 @@ export const ShiftReconciliation: React.FC<ShiftReconciliationProps> = ({
                   Live Inventory / Cash Variance Calculations
                 </h3>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                  <span>Inventory / Cash Variance:</span>
+                  <span>Cash Variance:</span>
                   <span style={{ 
                     fontWeight: 700, 
-                    color: (physicalCashCollected - activeShift.expectedCash) < 0 ? 'var(--color-danger)' : 'var(--color-success)'
+                    color: (physicalCashCollected - activeShift.expectedCash) < 0 ? 'var(--color-danger)' : (physicalCashCollected - activeShift.expectedCash) > 0 ? 'var(--color-warning)' : 'var(--color-success)'
                   }}>
                     Rs. {(physicalCashCollected - activeShift.expectedCash).toLocaleString()}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                  <span>Full Cylinders Variance:</span>
+                  <span style={{ 
+                    fontWeight: 700, 
+                    color: (endFullCylinders - calculateExpectedFulls()) === 0 ? 'var(--color-success)' : 'var(--color-warning)'
+                  }}>
+                    {(endFullCylinders - calculateExpectedFulls()) > 0 ? `+${endFullCylinders - calculateExpectedFulls()}` : endFullCylinders - calculateExpectedFulls()} Full
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -361,7 +512,7 @@ export const ShiftReconciliation: React.FC<ShiftReconciliationProps> = ({
                     fontWeight: 700, 
                     color: (endEmptyCylinders - calculateExpectedEmpties()) === 0 ? 'var(--color-success)' : 'var(--color-warning)'
                   }}>
-                    {(endEmptyCylinders - calculateExpectedEmpties())} Empty Shells
+                    {(endEmptyCylinders - calculateExpectedEmpties()) > 0 ? `+${endEmptyCylinders - calculateExpectedEmpties()}` : endEmptyCylinders - calculateExpectedEmpties()} Empty Shells
                   </span>
                 </div>
               </div>

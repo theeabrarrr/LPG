@@ -25,7 +25,7 @@ import { FinancialLedger } from './components/FinancialLedger';
 import { InventoryManager } from './components/InventoryManager';
 import { StaffRegistry } from './components/StaffRegistry';
 
-const API_BASE = 'http://localhost:3000';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 const SESSION_KEY = 'lpg_session';
 
 type Tab = 'dashboard' | 'customers' | 'trips' | 'reconcile' | 'expenses' | 'ledger' | 'inventory' | 'staff';
@@ -72,11 +72,23 @@ export default function App() {
   const [expenses,      setExpenses]      = useState<any[]>([]);
   const [ledgerEntries, setLedgerEntries] = useState<any[]>([]);
   const [accounts,      setAccounts]      = useState<any[]>([]);
-  const [notifications, setNotifications] = useState<string[]>([]);
+  const [notifications, setNotifications] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('lpg_notifications');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [warehouses,    setWarehouses]    = useState<any[]>([]);
   const [warehouseStock,setWarehouseStock]= useState<any>(null);
   const [backendActive, setBackendActive] = useState(false);
   const [dataLoading,   setDataLoading]   = useState(false);
+
+  // Sync notifications to localStorage
+  useEffect(() => {
+    localStorage.setItem('lpg_notifications', JSON.stringify(notifications));
+  }, [notifications]);
 
   // ── Restore session from localStorage ──
   useEffect(() => {
@@ -96,6 +108,7 @@ export default function App() {
   // ── Handle logout ──
   const handleLogout = () => {
     localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem('lpg_notifications');
     setSession(null);
     setCustomers([]); setOrders([]); setDrivers([]);
     setActiveShifts([]); setExpenses([]); setLedgerEntries([]);
@@ -225,6 +238,16 @@ export default function App() {
     loadData();
   };
 
+  const handleUpdateCustomer = async (id: string, dto: any) => {
+    const res = await fetch(`${API_BASE}/customer/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dto),
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.message || 'Customer update failed'); }
+    loadData();
+  };
+
   const handleCreateOrder = async (dto: any) => {
     const res = await fetch(`${API_BASE}/orders`, {
       method: 'POST',
@@ -253,7 +276,7 @@ export default function App() {
     const res = await fetch(`${API_BASE}/shifts/${id}/close`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(dto),
+      body: JSON.stringify({ ...dto, reconciledById: session?.userId }),
     });
     if (!res.ok) { const e = await res.json(); throw new Error(e.message || 'Reconciliation failed'); }
     const data = await res.json();
@@ -461,7 +484,7 @@ export default function App() {
           <main className="main-content">
             <div className="main-content-inner fade-in">
               {activeTab === 'dashboard'  && canAccessTab('dashboard')  && <Dashboard stats={getStats()} notifications={notifications} />}
-              {activeTab === 'customers'  && canAccessTab('customers')  && <CustomerRegistry customers={customers} onAddCustomer={handleAddCustomer} onUpdateStatus={handleUpdateCustomerStatus} tenantId={tenantId} />}
+              {activeTab === 'customers'  && canAccessTab('customers')  && <CustomerRegistry customers={customers} onAddCustomer={handleAddCustomer} onUpdateStatus={handleUpdateCustomerStatus} onUpdateCustomer={handleUpdateCustomer} ledgerEntries={ledgerEntries} tenantId={tenantId} />}
               {activeTab === 'trips'      && canAccessTab('trips')      && <TripDispatchConsole draftOrders={orders} drivers={drivers} activeShifts={activeShifts} onDispatchTrip={handleDispatchTrip} customers={customers} warehouses={warehouses} onCreateOrder={handleCreateOrder} />}
               {activeTab === 'inventory'  && canAccessTab('inventory')  && <InventoryManager stock={warehouseStock} activeTrips={activeShifts} onUpdateStock={handleUpdateStock} onVerifyGatePass={handleVerifyGatePass} />}
               {activeTab === 'reconcile'  && canAccessTab('reconcile')  && <ShiftReconciliation shifts={activeShifts} onReconcile={handleReconcileShift} API_BASE={API_BASE} />}

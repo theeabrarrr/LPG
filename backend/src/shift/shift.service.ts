@@ -296,17 +296,24 @@ export class ShiftService {
 
     const result = await this.prisma.$transaction(async (tx) => {
       // 1. Update Order status and details
+      const finalPhoto = dto.receiptUrl || dto.deliveryPhoto || null;
+      const finalPaymentTerms = dto.paymentTerms || order.paymentTerms;
+      const finalNotes = dto.chequeNumber
+        ? `${dto.notes || ''} [Cheque No: ${dto.chequeNumber}]`.trim()
+        : (dto.notes ?? null);
+
       const updatedOrder = await tx.order.update({
         where: { id: dto.orderId },
         data: {
           status: 'DELIVERED_UNVERIFIED',
           deliveredAt: new Date(),
           customerSignature: dto.customerSignature ?? null,
-          deliveryPhoto: dto.deliveryPhoto ?? null,
+          deliveryPhoto: finalPhoto,
           indirectHandover: dto.indirectHandover ?? false,
-          notes: dto.notes ?? null,
+          notes: finalNotes,
           deliveryLatitude: dto.deliveryLatitude ?? null,
           deliveryLongitude: dto.deliveryLongitude ?? null,
+          paymentTerms: finalPaymentTerms,
           geofenceDistance,
           geofenceViolated,
         },
@@ -351,12 +358,13 @@ export class ShiftService {
       });
 
       // 5. Update shift expectedCash if terms are CASH_ON_DELIVERY or CHEQUE_ON_DELIVERY
-      if (order.paymentTerms === 'CASH_ON_DELIVERY' || order.paymentTerms === 'CHEQUE_ON_DELIVERY') {
+      if (finalPaymentTerms === 'CASH_ON_DELIVERY' || finalPaymentTerms === 'CHEQUE_ON_DELIVERY') {
+        const cashIncrement = dto.collectedAmount !== undefined ? dto.collectedAmount : order.totalAmount;
         await tx.driverShift.update({
           where: { id: order.shiftSessionId! },
           data: {
             expectedCash: {
-              increment: order.totalAmount,
+              increment: cashIncrement,
             },
           },
         });
@@ -438,7 +446,7 @@ export class ShiftService {
       sumSwapped += Math.min(delivered, recovered);
     }
 
-    const expectedEmpties = shift.startEmptyCylinders + sumRecovered - sumSwapped;
+    const expectedEmpties = shift.startEmptyCylinders + sumRecovered;
 
     // 3. Odometer and Stock changes
     const expectedCash = shift.expectedCash;
@@ -713,8 +721,13 @@ export class ShiftService {
       include: {
         driver: { select: { id: true, name: true, email: true } },
         reconciledBy: { select: { id: true, name: true } },
-        orders: true,
+        orders: {
+          include: {
+            customer: true,
+          },
+        },
         expenseClaims: true,
+        cylinderLedgers: true,
       },
     });
 

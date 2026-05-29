@@ -45,6 +45,18 @@ graph TD
 - **Fleet Efficiency:** Increase cylinder deliveries per kilometer by 20% through structured dispatch controls.
 - **Operational Auditing:** 100% transparency with zero destructive edits on any transactional ledger database.
 
+### 1.5 Deployment Context & Client Focus (Raza Gas Pvt Ltd)
+
+> [!IMPORTANT]
+> **Single-Tenant Operation Focus**  
+> While the ERP architecture supports multi-tenancy at the data layer, all active development, interfaces, business processes, and logic MUST prioritize the operational patterns and constraints of our primary single-tenant deployment: **Raza Gas Pvt Ltd** (Karachi, Pakistan).
+> 
+> **Key Single-Tenant Guardrails:**
+> 1. **Default Currency & Terminology:** The system operations default to PKR (`Rs.`) and Pakistani standard LPG distribution terminology (e.g. "Full Cylinders", "Empty Shells", "Accounts Receivable Aging").
+> 2. **WhatsApp Notification Alerts:** Simulated WhatsApp logs operate under the local client settings (`Raza Gas Pvt Ltd` context).
+> 3. **Ledger System Accounts:** Double-entry bookkeeping must always initialize and resolve using codes `'1000'` (Cash in Hand), `'1200'` (Accounts Receivable), `'1400'` (Driver Suspense Cash), `'4000'` (LPG Sales Revenue), and `'5000'` (Operating Expenses).
+> 4. **No Destructive Database Mutations:** For audit integrity, destructive deletions or updates on transaction ledger tables (e.g., `FinancialLedger`, `CylinderLedger`) are strictly prohibited in the codebase.
+
 ---
 
 ## SECTION 2 — BUSINESS MODEL UNDERSTANDING
@@ -1439,4 +1451,12 @@ Week: 1-4              5-8                  9-12                 13-16          
 ### 21.4 Version 1.2.2 - Raza Gas Pvt Ltd Real-Data Workflow Integration Test Verification
 - **Real-Data Integration Test Script:** Created the backend `src/test-real-workflow.ts` script targeting the user's custom records in the database (`Raza Gas Pvt Ltd` tenant, driver `Muhammad Ibaad`, owner/accountant `Raza Riaz`, customer `muhammad abrar`, and main warehouse).
 - **Execution & Validation:** Successfully ran E2E integration test on the real-data structure. Verified that draft order creation, credit control blocking (Rs. 60k order blocked while Rs. 25k order allowed), route load sheets, cylinder swaps (5 fulls delivered, 4 empties recovered, customer empty cylinder liability updated to 1), approved fuel expenses, driver EOD cash collection shortages (Rs. 1,000 variance), and double-entry general ledger debit/credit balances (Rs. 29,000 totals) function perfectly under the real custom credentials.
+
+### 21.5 Version 1.3.0 - Phase 2 Advanced Enterprise Controls & Reconciliations
+- **Automated WhatsApp Billing & Notifications:** Implemented a backend WhatsApp notification dispatcher service (`whatsapp.service.ts`) under `backend/src/notifications/`. Integrated template-based mock logging triggered dynamically during order assignment, delivery completion, and EOD payment settlements.
+- **GPS Geofence Violation Warnings:** Added `geofenceViolated` and `geofenceDistance` fields to the `Order` model in Prisma. Implemented active Haversine formula calculation during delivery check-ins. If coordinates deviate > 100 meters, a warning badge (e.g. `⚠️ Geofence Breach: 320m offsite`) is shown on the shift reconciliation panel.
+- **A/R Aging Dashboard:** Added the `GET /ledger/ar-aging` endpoint to calculate outstanding receivables grouped in chronological buckets (0-30 days, 31-60 days, 61-90 days, >90 days). Exposed this data in the General Ledger UI with a HSL CSS segmented bar chart and detailed aged-debt tables.
+- **Expense Watermarking & Metadata Validation:** Implemented simulated cryptographic coordinate watermarking by modifying receipt attachment URLs (appending `?watermark=LPG_ENTERPRISE`) upon driver logging. Added a trajectory check that rejects fuel claims submitted >10 km away from any order location in the driver's shift trip.
+- **E2E Integration Verification:** Build compiles successfully across all modules (`backend`, `frontend-web`, and `mobile-simulator` with `0 errors`). Fully verified all geofence calculations, watermarking checks, double-entry ledgers, and A/R aging groupings through both the automated mock test and real-data integration test suites.
+
 

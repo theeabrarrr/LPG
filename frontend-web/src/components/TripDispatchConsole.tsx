@@ -96,6 +96,90 @@ export const TripDispatchConsole: React.FC<TripDispatchConsoleProps> = ({
     }
   };
 
+  const handlePrintGatePass = (s: any) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    let ordersHtml = '';
+    if (s.orders && s.orders.length > 0) {
+      s.orders.forEach((o: any) => {
+        ordersHtml += `
+          <tr>
+            <td style="padding: 8px; border: 1px solid #ddd;">#${o.id.slice(0, 6).toUpperCase()}</td>
+            <td style="padding: 8px; border: 1px solid #ddd;">${o.customer?.name || 'Customer'}</td>
+            <td style="padding: 8px; border: 1px solid #ddd;">${o.customer?.address || 'No Address'}</td>
+            <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${o.quantity} Cylinders</td>
+            <td style="padding: 8px; border: 1px solid #ddd;">${o.paymentTerms}</td>
+          </tr>
+        `;
+      });
+    } else {
+      ordersHtml = '<tr><td colspan="5" style="padding: 8px; text-align: center;">No orders assigned or loading...</td></tr>';
+    }
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>GATE PASS - TRUCK LOADING LOAD SHEET</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #333; padding: 25px; line-height: 1.4; }
+            .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+            .title { font-size: 22px; font-weight: bold; margin: 0; text-transform: uppercase; }
+            .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; background: #f9f9f9; padding: 15px; border-radius: 5px; border: 1px solid #eee; }
+            .meta-item { font-size: 14px; }
+            .meta-item strong { color: #000; }
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+            th { background: #f2f2f2; font-size: 12px; font-weight: bold; text-transform: uppercase; padding: 10px; border: 1px solid #ddd; text-align: left; }
+            td { font-size: 13px; padding: 8px; border: 1px solid #ddd; }
+            .footer { margin-top: 50px; display: grid; grid-template-columns: 1fr 1fr; gap: 50px; text-align: center; font-size: 13px; }
+            .sig-line { border-top: 1px solid #333; margin-top: 40px; padding-top: 5px; }
+          </style>
+        </head>
+        <body onload="window.print(); window.close();">
+          <div class="header">
+            <div class="title">Raza Gas Pvt Ltd - Gate Dispatch Pass</div>
+            <div style="font-size: 12px; color: #666; margin-top: 5px;">LPG Enterprise Distribution & Field Operations System</div>
+          </div>
+          
+          <div class="meta-grid">
+            <div class="meta-item"><strong>Dispatch ID:</strong> ${s.id}</div>
+            <div class="meta-item"><strong>Date:</strong> ${new Date(s.createdAt || Date.now()).toLocaleString()}</div>
+            <div class="meta-item"><strong>Driver Name:</strong> ${s.driverName || 'N/A'}</div>
+            <div class="meta-item"><strong>Truck/Vehicle ID:</strong> ${s.truckId}</div>
+            <div class="meta-item"><strong>Loaded Full Cylinders (45.2 KG):</strong> ${s.startFullCylinders} FC</div>
+            <div class="meta-item"><strong>Loaded Empty Shells:</strong> ${s.startEmptyCylinders} EC</div>
+          </div>
+          
+          <h3>Assigned Customer Deliveries List</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Order ID</th>
+                <th>Customer Name</th>
+                <th>Delivery Address</th>
+                <th>Quantity</th>
+                <th>Payment Terms</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${ordersHtml}
+            </tbody>
+          </table>
+          
+          <div class="footer">
+            <div>
+              <div class="sig-line">Warehouse Manager Sign-off</div>
+            </div>
+            <div>
+              <div class="sig-line">Driver Acknowledgement Signature</div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   const buildableOrders = draftOrders.filter(o => o.status === 'DRAFT' || o.status === 'BLOCKED');
 
   const getPriority = (o: Order) => {
@@ -301,9 +385,18 @@ export const TripDispatchConsole: React.FC<TripDispatchConsoleProps> = ({
                     <span style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.73rem' }}>Shift Status</span>
                     <span style={{ color: 'var(--color-warning)', fontWeight: 600 }}>In Transit</span>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button className="btn btn-primary btn-sm" style={{ flex: 1 }}>Dispatch Route</button>
-                    <button className="btn btn-danger btn-sm" style={{ flex: 1 }}>Cancel Assignment</button>
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.5rem' }}>
+                    <button 
+                      className="btn" 
+                      onClick={() => handlePrintGatePass(s)}
+                      style={{ padding: '0.35rem 0.5rem', fontSize: '0.75rem', background: 'rgba(0,122,255,0.15)', color: 'var(--color-primary)', border: '1px solid rgba(0,122,255,0.2)', width: '100%' }}
+                    >
+                      Print Gate Pass
+                    </button>
+                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                      <button className="btn btn-primary btn-sm" style={{ flex: 1 }}>Dispatch Route</button>
+                      <button className="btn btn-danger btn-sm" style={{ flex: 1 }}>Cancel Assignment</button>
+                    </div>
                   </div>
                 </div>
               ))

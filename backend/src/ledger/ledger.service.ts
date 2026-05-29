@@ -198,6 +198,7 @@ export class LedgerService {
           where: {
             paymentTerms: 'CREDIT',
             paymentStatus: { in: ['UNPAID', 'PARTIALLY_PAID'] },
+            status: { notIn: ['DRAFT', 'BLOCKED', 'CANCELLED'] },
           },
         },
       },

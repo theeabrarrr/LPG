@@ -78,7 +78,7 @@ async function runTest() {
   await prisma.order.deleteMany({ where: { tenantId } });
   await prisma.driverShift.deleteMany({ where: { tenantId } });
 
-  // Update customer credit limit & status to active for the test
+  // Update customer credit limit, status, and coordinates to active for the test
   await prisma.customer.update({
     where: { id: customer.id },
     data: {
@@ -86,9 +86,11 @@ async function runTest() {
       creditBalance: 0.0,
       emptyCylinderLiability: 0,
       status: 'ACTIVE',
+      latitude: 33.7294,
+      longitude: 73.0931,
     }
   });
-  console.log(`[Customer Prep] Updated ${customer.name} credit limit to Rs. 50,000.`);
+  console.log(`[Customer Prep] Updated ${customer.name} credit limit to Rs. 50,000 and set coordinates.`);
 
   // Load warehouse stock with full & empty counts
   await prisma.warehouse.update({
@@ -229,6 +231,15 @@ async function runTest() {
     throw new Error(`Expected order status to be DELIVERED_UNVERIFIED, got ${orderDelivered.status}`);
   }
 
+  // Geofence checks
+  console.log(`[Geofence Checks] Distance: ${orderDelivered.geofenceDistance}m, Violated: ${orderDelivered.geofenceViolated}`);
+  if (orderDelivered.geofenceDistance === null || orderDelivered.geofenceDistance === undefined) {
+    throw new Error('Expected order geofenceDistance to be calculated');
+  }
+  if (orderDelivered.geofenceViolated !== false) {
+    throw new Error('Expected order geofenceViolated to be false for matching delivery coordinates');
+  }
+
   // Verify Customer liability increased by 1 (5 delivered - 4 recovered)
   const customerAfterDel = await prisma.customer.findUnique({ where: { id: customer.id } });
   console.log(`[Customer Balance] Cylinder Liability (Expected 1): ${customerAfterDel?.emptyCylinderLiability}`);
@@ -277,6 +288,12 @@ async function runTest() {
     receiptHash: 'mocked_hash_value_123',
   });
   console.log(`[Expense Logged] Category: ${expense.category}, Amount: Rs. ${expense.amount}, Status: ${expense.status}`);
+
+  // Watermark check
+  console.log(`[Expense Watermark] Receipt URL: ${expense.receiptUrl}`);
+  if (!expense.receiptUrl?.includes('watermark=LPG_ENTERPRISE')) {
+    throw new Error('Expected expense receipt URL to contain watermark parameter');
+  }
 
   // D. Duplicate Receipt Hash Check
   try {
@@ -418,6 +435,19 @@ async function runTest() {
   const revenueBalance = accountsFinal.find(a => a.code === '4000')?.balance;
   if (revenueBalance !== 25000.0) {
     throw new Error(`Expected LPG Sales Revenue balance to be 25000.0, got ${revenueBalance}`);
+  }
+
+  // 11. Test A/R Aging Calculation
+  console.log('\n--- 11. TESTING A/R AGING CALCULATION ---');
+  const agingReport = await ledgerService.getARAging(tenantId);
+  console.log('A/R Aging Report:', JSON.stringify(agingReport, null, 2));
+  const customerAging = agingReport.find((a) => a.customerId === customer.id);
+  if (!customerAging) {
+    throw new Error(`Expected aging report for customer ${customer.name}`);
+  }
+  console.log(`- Customer: ${customerAging.customerName}, Credit Balance: Rs. ${customerAging.creditBalance}, Total Unpaid: Rs. ${customerAging.totalUnpaid}`);
+  if (customerAging.brackets['0-30'] !== 25000.0) {
+    throw new Error(`Expected Rs. 25,000 in 0-30 days bracket, got ${customerAging.brackets['0-30']}`);
   }
 
   console.log('\n*** INTEGRATION TEST PASSED SUCCESSFULLY! ALL VERIFICATIONS ARE CORRECT FOR REAL DATA! ***');

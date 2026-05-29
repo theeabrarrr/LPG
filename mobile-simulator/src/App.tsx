@@ -20,7 +20,7 @@ import {
   LogOut,
 } from 'lucide-react';
 
-const API_BASE = 'http://localhost:3000';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 const MOBILE_SESSION_KEY = 'lpg_mobile_session';
 
 
@@ -62,9 +62,42 @@ export default function App() {
   const [lang, setLang] = useState('en');
 
   // Offline / sync engine
-  const [isOffline, setIsOffline]   = useState(false);
-  const [outbox, setOutbox]         = useState<SyncEvent[]>([]);
-  const [syncLogs, setSyncLogs]     = useState<string[]>([]);
+  const [isOffline, setIsOffline]   = useState(() => {
+    try {
+      const saved = localStorage.getItem('lpg_sim_isOffline');
+      return saved ? JSON.parse(saved) : false;
+    } catch {
+      return false;
+    }
+  });
+  const [outbox, setOutbox]         = useState<SyncEvent[]>(() => {
+    try {
+      const saved = localStorage.getItem('lpg_sim_outbox');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [syncLogs, setSyncLogs]     = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('lpg_sim_syncLogs');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('lpg_sim_isOffline', JSON.stringify(isOffline));
+  }, [isOffline]);
+
+  useEffect(() => {
+    localStorage.setItem('lpg_sim_outbox', JSON.stringify(outbox));
+  }, [outbox]);
+
+  useEffect(() => {
+    localStorage.setItem('lpg_sim_syncLogs', JSON.stringify(syncLogs));
+  }, [syncLogs]);
   const [backendActive, setBackendActive] = useState(false);
 
   // ────────────────────────────────────────────────
@@ -437,6 +470,9 @@ export default function App() {
   // LOGOUT
   // ────────────────────────────────────────────────
   const handleLogout = () => {
+    localStorage.removeItem('lpg_sim_isOffline');
+    localStorage.removeItem('lpg_sim_outbox');
+    localStorage.removeItem('lpg_sim_syncLogs');
     setDriver(null);
     setRole(null);
     setIsLoggedIn(false);

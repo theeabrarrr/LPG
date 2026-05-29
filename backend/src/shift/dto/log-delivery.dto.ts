@@ -32,4 +32,24 @@ export class LogDeliveryDto {
   @IsNumber()
   @IsOptional()
   deliveryLongitude?: number;
+
+  @IsNumber()
+  @IsOptional()
+  deliveredQuantity?: number;
+
+  @IsString()
+  @IsOptional()
+  paymentTerms?: string;
+
+  @IsNumber()
+  @IsOptional()
+  collectedAmount?: number;
+
+  @IsString()
+  @IsOptional()
+  receiptUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  chequeNumber?: string;
 }

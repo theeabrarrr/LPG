@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterCustomerDto } from './dto/register-customer.dto';
+import { UpdateCustomerDto } from './dto/update-customer.dto';
 
 @Injectable()
 export class CustomerService {
@@ -116,6 +117,27 @@ export class CustomerService {
     return this.prisma.customer.update({
       where: { id: customerId },
       data: { status },
+    });
+  }
+
+  /**
+   * Update customer details and/or credit limit
+   */
+  async updateCustomer(customerId: string, dto: UpdateCustomerDto) {
+    const customer = await this.getCustomerDetails(customerId);
+
+    return this.prisma.customer.update({
+      where: { id: customerId },
+      data: {
+        name: dto.name !== undefined ? dto.name : customer.name,
+        email: dto.email !== undefined ? dto.email : customer.email,
+        phoneNumber: dto.phoneNumber !== undefined ? dto.phoneNumber : customer.phoneNumber,
+        address: dto.address !== undefined ? dto.address : customer.address,
+        latitude: dto.latitude !== undefined ? dto.latitude : customer.latitude,
+        longitude: dto.longitude !== undefined ? dto.longitude : customer.longitude,
+        creditLimit: dto.creditLimit !== undefined ? dto.creditLimit : customer.creditLimit,
+        status: dto.status !== undefined ? dto.status : customer.status,
+      },
     });
   }
 }

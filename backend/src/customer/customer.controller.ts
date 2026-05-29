@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, HttpStatus, HttpCode } from '@nestjs/common';
 import { CustomerService } from './customer.service';
 import { RegisterCustomerDto } from './dto/register-customer.dto';
+import { UpdateCustomerDto } from './dto/update-customer.dto';
 
 @Controller('customer')
 export class CustomerController {
@@ -43,5 +44,13 @@ export class CustomerController {
     @Body('status') status: 'ACTIVE' | 'BLOCKED' | 'SUSPENDED',
   ) {
     return this.customerService.updateCustomerStatus(id, status);
+  }
+
+  @Patch(':id')
+  async updateCustomer(
+    @Param('id') id: string,
+    @Body() dto: UpdateCustomerDto,
+  ) {
+    return this.customerService.updateCustomer(id, dto);
   }
 }
