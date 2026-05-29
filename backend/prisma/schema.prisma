@@ -136,6 +136,8 @@ model Order {
   
   deliveryLatitude   Float?
   deliveryLongitude  Float?
+  geofenceViolated   Boolean        @default(false)
+  geofenceDistance   Float?
   deliveredAt        DateTime?
   customerSignature  String?        // Digital signature URL
   deliveryPhoto      String?        // Installation/manifolds confirmation photo URL

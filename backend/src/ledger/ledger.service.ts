@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 
 @Injectable()
 export class LedgerService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(public readonly prisma: PrismaService) {}
 
   /**
    * Create a new Financial Account in the Chart of Accounts
@@ -187,6 +187,62 @@ export class LedgerService {
   }
 
   /**
+   * Calculate Accounts Receivable (A/R) aging for a tenant
+   */
+  async getARAging(tenantId: string) {
+    // Fetch all customers for the tenant, including their unpaid or partially paid credit orders
+    const customers = await this.prisma.customer.findMany({
+      where: { tenantId },
+      include: {
+        orders: {
+          where: {
+            paymentTerms: 'CREDIT',
+            paymentStatus: { in: ['UNPAID', 'PARTIALLY_PAID'] },
+          },
+        },
+      },
+    });
+
+    const now = new Date();
+
+    return customers.map((customer) => {
+      let bracket0to30 = 0;
+      let bracket31to60 = 0;
+      let bracket61to90 = 0;
+      let bracketOver90 = 0;
+
+      for (const order of customer.orders) {
+        const ageInMs = now.getTime() - order.createdAt.getTime();
+        const ageInDays = Math.floor(ageInMs / (1000 * 60 * 60 * 24));
+
+        if (ageInDays <= 30) {
+          bracket0to30 += order.totalAmount;
+        } else if (ageInDays <= 60) {
+          bracket31to60 += order.totalAmount;
+        } else if (ageInDays <= 90) {
+          bracket61to90 += order.totalAmount;
+        } else {
+          bracketOver90 += order.totalAmount;
+        }
+      }
+
+      return {
+        customerId: customer.id,
+        customerName: customer.name,
+        creditLimit: customer.creditLimit,
+        creditBalance: customer.creditBalance,
+        brackets: {
+          '0-30': bracket0to30,
+          '31-60': bracket31to60,
+          '61-90': bracket61to90,
+          '90+': bracketOver90,
+        },
+        totalUnpaid: bracket0to30 + bracket31to60 + bracket61to90 + bracketOver90,
+      };
+    });
+  }
+
+  /**
    * Block destructive update operations
    */
   async update() {
@@ -198,5 +254,88 @@ export class LedgerService {
    */
   async delete() {
     throw new ForbiddenException('Destructive deletions are blocked on FinancialLedger entries for audit and fraud prevention.');
+  }
+
+  /**
+   * Retrieve Accounts Receivable (AR) Aging for all customers of a tenant
+   */
+  async getArAging(tenantId: string) {
+    const customers = await this.prisma.customer.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        name: true,
+        creditLimit: true,
+        creditBalance: true,
+      },
+    });
+
+    const arAccount = await this.prisma.financialAccount.findFirst({
+      where: { tenantId, code: '1200' }
+    });
+
+    const agingReport = [];
+
+    for (const customer of customers) {
+      const report = {
+        customerId: customer.id,
+        customerName: customer.name,
+        creditLimit: customer.creditLimit,
+        totalOutstanding: customer.creditBalance,
+        current: 0,
+        thirtyToSixty: 0,
+        sixtyToNinety: 0,
+        overNinety: 0,
+      };
+
+      if (customer.creditBalance > 0 && arAccount) {
+        // Find all debit postings to Accounts Receivable (code 1200) for this customer
+        const debits = await this.prisma.financialLedger.findMany({
+          where: {
+            tenantId,
+            accountId: arAccount.id,
+            customerId: customer.id,
+            debit: { gt: 0 }
+          },
+          orderBy: { createdAt: 'desc' }
+        });
+
+        let remainingBalance = customer.creditBalance;
+        const now = new Date();
+
+        for (const entry of debits) {
+          if (remainingBalance <= 0) break;
+          const ageInDays = Math.floor((now.getTime() - entry.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+          const amountToAllocate = Math.min(remainingBalance, entry.debit);
+
+          if (ageInDays <= 30) {
+            report.current += amountToAllocate;
+          } else if (ageInDays <= 60) {
+            report.thirtyToSixty += amountToAllocate;
+          } else if (ageInDays <= 90) {
+            report.sixtyToNinety += amountToAllocate;
+          } else {
+            report.overNinety += amountToAllocate;
+          }
+          remainingBalance -= amountToAllocate;
+        }
+
+        // Allocate any remaining balance that wasn't matched to recent debits to the oldest bin
+        if (remainingBalance > 0) {
+          report.overNinety += remainingBalance;
+        }
+      }
+
+      // Round all values to 2 decimal places
+      report.current = Math.round(report.current * 100) / 100;
+      report.thirtyToSixty = Math.round(report.thirtyToSixty * 100) / 100;
+      report.sixtyToNinety = Math.round(report.sixtyToNinety * 100) / 100;
+      report.overNinety = Math.round(report.overNinety * 100) / 100;
+      report.totalOutstanding = Math.round(report.totalOutstanding * 100) / 100;
+
+      agingReport.push(report);
+    }
+
+    return agingReport;
   }
 }

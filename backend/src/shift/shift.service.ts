@@ -4,12 +4,14 @@ import { LedgerService } from '../ledger/ledger.service';
 import { OpenShiftDto } from './dto/open-shift.dto';
 import { LogDeliveryDto } from './dto/log-delivery.dto';
 import { CloseShiftDto } from './dto/close-shift.dto';
+import { WhatsAppService } from '../notifications/whatsapp.service';
 
 @Injectable()
 export class ShiftService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledgerService: LedgerService,
+    private readonly whatsapp: WhatsAppService,
   ) {}
 
   /**
@@ -216,6 +218,21 @@ export class ShiftService {
     });
   }
 
+  private calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371e3; // meters
+    const phi1 = (lat1 * Math.PI) / 180;
+    const phi2 = (lat2 * Math.PI) / 180;
+    const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+    const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a =
+      Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+      Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c; // in meters
+  }
+
   /**
    * Driver logs a delivery of full cylinders and recovery of empty cylinders
    */
@@ -250,7 +267,34 @@ export class ShiftService {
 
     const liabilityIncrement = order.quantity - dto.recoveredQuantity;
 
-    return this.prisma.$transaction(async (tx) => {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: order.customerId },
+    });
+
+    let geofenceDistance: number | null = null;
+    let geofenceViolated = false;
+
+    if (
+      customer &&
+      customer.latitude !== null &&
+      customer.longitude !== null &&
+      dto.deliveryLatitude !== undefined &&
+      dto.deliveryLatitude !== null &&
+      dto.deliveryLongitude !== undefined &&
+      dto.deliveryLongitude !== null
+    ) {
+      geofenceDistance = this.calculateHaversineDistance(
+        customer.latitude,
+        customer.longitude,
+        dto.deliveryLatitude,
+        dto.deliveryLongitude
+      );
+      if (geofenceDistance > 100) {
+        geofenceViolated = true;
+      }
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
       // 1. Update Order status and details
       const updatedOrder = await tx.order.update({
         where: { id: dto.orderId },
@@ -263,6 +307,8 @@ export class ShiftService {
           notes: dto.notes ?? null,
           deliveryLatitude: dto.deliveryLatitude ?? null,
           deliveryLongitude: dto.deliveryLongitude ?? null,
+          geofenceDistance,
+          geofenceViolated,
         },
       });
 
@@ -318,6 +364,18 @@ export class ShiftService {
 
       return updatedOrder;
     });
+
+    if (customer) {
+      await this.whatsapp.sendOrderDelivery(
+        customer.phoneNumber || 'unknown',
+        customer.name,
+        order.id,
+        order.quantity,
+        geofenceViolated,
+      ).catch((err) => console.error('Failed to send WhatsApp delivery alert:', err));
+    }
+
+    return result;
   }
 
   /**
@@ -592,6 +650,25 @@ export class ShiftService {
         transactionType: 'GENERAL_ADJUSTMENT',
         entries: journalEntries,
       });
+    }
+
+    if (ledgerResult && ledgerResult.batchId) {
+      for (const o of shiftOrders) {
+        if (o.paymentTerms === 'CASH_ON_DELIVERY' || o.paymentTerms === 'CHEQUE_ON_DELIVERY') {
+          const cust = await this.prisma.customer.findUnique({
+            where: { id: o.customerId },
+          });
+          if (cust) {
+            await this.whatsapp.sendPaymentCloseout(
+              cust.phoneNumber || 'unknown',
+              cust.name,
+              o.totalAmount,
+              o.paymentTerms,
+              ledgerResult.batchId,
+            ).catch((err) => console.error('Failed to send WhatsApp payment closeout alert:', err));
+          }
+        }
+      }
     }
 
     return {

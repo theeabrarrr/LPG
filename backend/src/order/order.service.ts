@@ -3,12 +3,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CustomerService } from '../customer/customer.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { AssignOrderDto } from './dto/assign-order.dto';
+import { WhatsAppService } from '../notifications/whatsapp.service';
 
 @Injectable()
 export class OrderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly customerService: CustomerService,
+    private readonly whatsapp: WhatsAppService,
   ) {}
 
   /**
@@ -170,7 +172,7 @@ export class OrderService {
       throw new BadRequestException(`Cannot assign order. Customer ${customer.name} is BLOCKED.`);
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       if (order.status === 'BLOCKED') {
         // Re-verify stock inside transaction
         const currentWarehouse = await tx.warehouse.findUnique({
@@ -220,6 +222,19 @@ export class OrderService {
         },
       });
     });
+
+    if (driver && customer) {
+      await this.whatsapp.sendOrderAssignment(
+        driver.phoneNumber || 'unknown',
+        driver.name,
+        order.id,
+        customer.name,
+        order.quantity,
+        customer.address || 'unknown',
+      ).catch((err) => console.error('Failed to send WhatsApp assignment alert:', err));
+    }
+
+    return result;
   }
 
   /**

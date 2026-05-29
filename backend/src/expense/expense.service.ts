@@ -55,6 +55,49 @@ export class ExpenseService {
       throw new BadRequestException(`Dispatch session ${dto.shiftSessionId} is not ACTIVE (Current status: ${shift.status}).`);
     }
 
+    // 5. Trajectory coordinates check: if latitude and longitude are provided, check against the shift's orders
+    if (
+      dto.latitude !== undefined &&
+      dto.latitude !== null &&
+      dto.longitude !== undefined &&
+      dto.longitude !== null
+    ) {
+      const shiftOrders = await this.prisma.order.findMany({
+        where: { shiftSessionId: dto.shiftSessionId },
+        include: { customer: true },
+      });
+
+      if (shiftOrders.length > 0) {
+        let withinTrajectory = false;
+        for (const order of shiftOrders) {
+          const lat = order.deliveryLatitude ?? order.customer?.latitude;
+          const lon = order.deliveryLongitude ?? order.customer?.longitude;
+          if (lat !== null && lat !== undefined && lon !== null && lon !== undefined) {
+            const distance = this.calculateHaversineDistance(dto.latitude, dto.longitude, lat, lon);
+            // 10 km threshold (10000 meters)
+            if (distance <= 10000) {
+              withinTrajectory = true;
+              break;
+            }
+          }
+        }
+        if (!withinTrajectory) {
+          throw new BadRequestException('Expense claim location does not align with route trajectory.');
+        }
+      }
+    }
+
+    // 6. Watermark formatting on receipt claim url
+    let receiptUrl = dto.receiptUrl ?? null;
+    if (receiptUrl) {
+      const watermarkTag = 'watermark=LPG_ENTERPRISE';
+      if (receiptUrl.includes('?')) {
+        receiptUrl = `${receiptUrl}&${watermarkTag}`;
+      } else {
+        receiptUrl = `${receiptUrl}?${watermarkTag}`;
+      }
+    }
+
     return this.prisma.expenseClaim.create({
       data: {
         tenantId: dto.tenantId,
@@ -63,7 +106,7 @@ export class ExpenseService {
         category: dto.category,
         amount: dto.amount,
         description: dto.description ?? null,
-        receiptUrl: dto.receiptUrl ?? null,
+        receiptUrl,
         receiptHash: dto.receiptHash ?? null,
         odometer: dto.odometer ?? null,
         latitude: dto.latitude ?? null,
@@ -71,6 +114,21 @@ export class ExpenseService {
         status: 'AWAITING_APPROVAL',
       },
     });
+  }
+
+  private calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371e3; // meters
+    const phi1 = (lat1 * Math.PI) / 180;
+    const phi2 = (lat2 * Math.PI) / 180;
+    const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+    const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a =
+      Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+      Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c; // in meters
   }
 
   /**

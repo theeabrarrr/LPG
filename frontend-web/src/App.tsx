@@ -464,9 +464,9 @@ export default function App() {
               {activeTab === 'customers'  && canAccessTab('customers')  && <CustomerRegistry customers={customers} onAddCustomer={handleAddCustomer} onUpdateStatus={handleUpdateCustomerStatus} tenantId={tenantId} />}
               {activeTab === 'trips'      && canAccessTab('trips')      && <TripDispatchConsole draftOrders={orders} drivers={drivers} activeShifts={activeShifts} onDispatchTrip={handleDispatchTrip} customers={customers} warehouses={warehouses} onCreateOrder={handleCreateOrder} />}
               {activeTab === 'inventory'  && canAccessTab('inventory')  && <InventoryManager stock={warehouseStock} activeTrips={activeShifts} onUpdateStock={handleUpdateStock} onVerifyGatePass={handleVerifyGatePass} />}
-              {activeTab === 'reconcile'  && canAccessTab('reconcile')  && <ShiftReconciliation shifts={activeShifts} onReconcile={handleReconcileShift} />}
+              {activeTab === 'reconcile'  && canAccessTab('reconcile')  && <ShiftReconciliation shifts={activeShifts} onReconcile={handleReconcileShift} API_BASE={API_BASE} />}
               {activeTab === 'expenses'   && canAccessTab('expenses')   && <ExpenseManager expenses={expenses} onApproveExpense={handleApproveExpense} />}
-              {activeTab === 'ledger'     && canAccessTab('ledger')     && <FinancialLedger accounts={accounts} entries={ledgerEntries} />}
+              {activeTab === 'ledger'     && canAccessTab('ledger')     && <FinancialLedger accounts={accounts} entries={ledgerEntries} tenantId={tenantId} API_BASE={API_BASE} />}
               {activeTab === 'staff'      && (role === 'Owner' || role === 'Manager') && <StaffRegistry tenantId={tenantId} backendActive={backendActive} API_BASE={API_BASE} />}
             </div>
           </main>

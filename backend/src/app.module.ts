@@ -9,6 +9,7 @@ import { ShiftModule } from './shift/shift.module';
 import { ExpenseModule } from './expense/expense.module';
 import { StaffModule } from './staff/staff.module';
 import { AuthModule } from './auth/auth.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 
 @Module({
@@ -21,6 +22,7 @@ import { AuthModule } from './auth/auth.module';
     ShiftModule,
     ExpenseModule,
     StaffModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
