@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const API_BASE = 'http://localhost:3000';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 interface LoginPageProps {
   onLogin: (session: { userId: string; tenantId: string; role: string; name: string; companyName: string }) => void;
