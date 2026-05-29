@@ -25,7 +25,10 @@ import { FinancialLedger } from './components/FinancialLedger';
 import { InventoryManager } from './components/InventoryManager';
 import { StaffRegistry } from './components/StaffRegistry';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:3000'
+    : window.location.origin);
 const SESSION_KEY = 'lpg_session';
 
 type Tab = 'dashboard' | 'customers' | 'trips' | 'reconcile' | 'expenses' | 'ledger' | 'inventory' | 'staff';

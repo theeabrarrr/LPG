@@ -8,6 +8,8 @@
     "mobile-simulator"
   ],
   "scripts": {
+    "build": "node build-production.js",
+    "start": "npm run start:prod --workspace=backend",
     "dev:backend": "npm run start:dev --workspace=backend",
     "dev:frontend": "npm run dev --workspace=frontend-web",
     "dev:mobile": "npm run dev --workspace=mobile-simulator",
