@@ -5,6 +5,10 @@ const path = require('path');
 try {
   console.log('--- STARTING MONOREPO PRODUCTION BUILD ---');
 
+  // 0. Generate Prisma Client
+  console.log('\n[0/3] Generating Prisma Client...');
+  execSync('npx prisma generate --schema=backend/prisma/schema.prisma', { stdio: 'inherit' });
+
   // 1. Build frontend-web
   console.log('\n[1/3] Building frontend-web...');
   execSync('npm run build --workspace=frontend-web', { stdio: 'inherit' });
