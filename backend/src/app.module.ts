@@ -18,12 +18,12 @@ import { NotificationsModule } from './notifications/notifications.module';
   imports: [
     ServeStaticModule.forRoot(
       {
-        rootPath: join(__dirname, '..', 'public'),
-        exclude: ['/api*'],
-      },
-      {
         rootPath: join(__dirname, '..', 'public-simulator'),
         serveRoot: '/simulator',
+      },
+      {
+        rootPath: join(__dirname, '..', 'public'),
+        exclude: ['/api*', '/simulator*'],
       },
     ),
     PrismaModule,
