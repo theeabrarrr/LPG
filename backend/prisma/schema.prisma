@@ -1,0 +1,332 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// ==========================================
+// MODELS
+// ==========================================
+
+/// Root entity for SaaS security isolation. Every other table is partitioned by tenantId.
+model Tenant {
+  id                String             @id @default(uuid())
+  name              String
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  
+  // Relations
+  users             User[]
+  customers         Customer[]
+  warehouses        Warehouse[]
+  orders            Order[]
+  shiftSessions     DriverShift[]
+  cylinderLedgers   CylinderLedger[]
+  financialAccounts FinancialAccount[]
+  financialLedgers  FinancialLedger[]
+  expenseClaims     ExpenseClaim[]
+  auditLogs         AuditLog[]
+}
+
+/// User accounts including back-office staff, accountants, drivers, etc.
+model User {
+  id            String         @id @default(uuid())
+  tenantId      String
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  email         String         @unique
+  passwordHash  String
+  name          String
+  
+  /// Role of the user: "SUPER_ADMIN", "BACK_OFFICE", "ACCOUNTANT", "DRIVER", "RECOVERY_AGENT", "WAREHOUSE_MANAGER", "BUSINESS_OWNER"
+  role          String
+  
+  phoneNumber   String?
+  pin           String?        // 4-digit PIN for mobile app authentication
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  // Relations
+  shiftSessions DriverShift[]  @relation("DriverShifts")
+  reconciled    DriverShift[]  @relation("AccountantReconciliations")
+  expenseClaims ExpenseClaim[] @relation("Claimant")
+  approvedClaims ExpenseClaim[] @relation("Approver")
+  auditLogs     AuditLog[]
+  orders        Order[]
+  financialLedgers FinancialLedger[]
+  cylinderLedgers  CylinderLedger[]
+}
+
+/// Customer records containing billing, credit controls, and cylinder liability balances.
+model Customer {
+  id                     String         @id @default(uuid())
+  tenantId               String
+  tenant                 Tenant         @relation(fields: [tenantId], references: [id])
+  name                   String
+  email                  String?
+  phoneNumber            String?
+  address                String?
+  latitude               Float?
+  longitude              Float?
+  creditLimit            Float          @default(0.0)
+  creditBalance          Float          @default(0.0) // Running receivables balance
+  emptyCylinderLiability Int            @default(0)   // Net full cylinders delivered minus empty shells returned
+  
+  /// Status of the customer: "ACTIVE", "BLOCKED", "SUSPENDED"
+  status                 String         @default("ACTIVE")
+  
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  // Relations
+  orders           Order[]
+  cylinderLedgers  CylinderLedger[]
+  financialLedgers FinancialLedger[]
+}
+
+/// Physical warehouses where cylinders are stored.
+model Warehouse {
+  id                   String         @id @default(uuid())
+  tenantId             String
+  tenant               Tenant         @relation(fields: [tenantId], references: [id])
+  name                 String
+  location             String?
+  fullCylinderStock    Int            @default(0)
+  emptyCylinderStock   Int            @default(0)
+  damagedCylinderStock Int            @default(0)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  // Relations
+  orders          Order[]
+  cylinderLedgers CylinderLedger[]
+}
+
+/// Orders placed by customers for refilling cylinders.
+model Order {
+  id                 String         @id @default(uuid())
+  tenantId           String
+  tenant             Tenant         @relation(fields: [tenantId], references: [id])
+  customerId         String
+  customer           Customer       @relation(fields: [customerId], references: [id])
+  warehouseId        String
+  warehouse          Warehouse      @relation(fields: [warehouseId], references: [id])
+  driverId           String?
+  driver             User?          @relation(fields: [driverId], references: [id])
+  shiftSessionId     String?
+  shiftSession       DriverShift?   @relation(fields: [shiftSessionId], references: [id])
+  quantity           Int            // Number of 45.2 KG LPG cylinders
+  unitPrice          Float
+  totalAmount        Float
+  
+  /// Payment terms: "CASH_ON_DELIVERY", "CHEQUE_ON_DELIVERY", "CREDIT"
+  paymentTerms       String
+  
+  /// Payment status: "UNPAID", "PARTIALLY_PAID", "PAID"
+  paymentStatus      String         @default("UNPAID")
+  
+  /// Order status: "DRAFT", "ASSIGNED", "IN_TRANSIT", "DELIVERED_UNVERIFIED", "COMPLETED", "BLOCKED"
+  status             String         @default("DRAFT")
+  
+  deliveryLatitude   Float?
+  deliveryLongitude  Float?
+  deliveredAt        DateTime?
+  customerSignature  String?        // Digital signature URL
+  deliveryPhoto      String?        // Installation/manifolds confirmation photo URL
+  indirectHandover   Boolean        @default(false)
+  notes              String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  // Relations
+  cylinderLedgers  CylinderLedger[]
+  financialLedgers FinancialLedger[]
+}
+
+/// Tracks driver activities and collections from check-out to EOD close.
+model DriverShift {
+  id                    String         @id @default(uuid())
+  tenantId              String
+  tenant                Tenant         @relation(fields: [tenantId], references: [id])
+  driverId              String
+  driver                User           @relation("DriverShifts", fields: [driverId], references: [id])
+  truckId               String
+  odometerStart         Float?
+  odometerEnd           Float?
+  
+  /// Status of the shift: "ACTIVE", "INVENTORY_VERIFIED", "RECONCILED", "DISPUTED"
+  status                String         @default("ACTIVE")
+  
+  // Starting vehicle payload
+  startFullCylinders    Int
+  startEmptyCylinders   Int            @default(0)
+
+  // Ending vehicle inventory check
+  endFullCylinders      Int?
+  endEmptyCylinders     Int?
+  endDamagedCylinders   Int?
+  
+  // Cash reconciliation
+  expectedCash          Float          @default(0.0) // Initial + collected - approved expenses
+  physicalCashCollected Float?
+  cashVariance          Float?         // physicalCashCollected - expectedCash
+  
+  reconciledById        String?
+  reconciledBy          User?          @relation("AccountantReconciliations", fields: [reconciledById], references: [id])
+  reconciliationNotes   String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  // Relations
+  orders           Order[]
+  expenseClaims    ExpenseClaim[]
+  cylinderLedgers  CylinderLedger[]
+  financialLedgers FinancialLedger[]
+
+  @@map("ShiftSession") // Map standard model name to user requirement
+}
+
+/// Tracks physical movements of cylinders. Counts must always balance.
+/// No records are ever deleted.
+model CylinderLedger {
+  id              String                  @id @default(uuid())
+  tenantId        String
+  tenant          Tenant                  @relation(fields: [tenantId], references: [id])
+  warehouseId     String?
+  warehouse       Warehouse?              @relation(fields: [warehouseId], references: [id])
+  customerId      String?
+  customer        Customer?               @relation(fields: [customerId], references: [id])
+  driverId        String?
+  driver          User?                   @relation(fields: [driverId], references: [id])
+  shiftSessionId  String?
+  shiftSession    DriverShift?            @relation(fields: [shiftSessionId], references: [id])
+  orderId         String?
+  order           Order?                  @relation(fields: [orderId], references: [id])
+  
+  // Inventory movement quantities (positive for incoming/addition, negative for outgoing/removal)
+  fullDelta       Int                     @default(0)
+  emptyDelta      Int                     @default(0)
+  damagedDelta    Int                     @default(0)
+  
+  /// Cylinder Transaction Type: "INTAKE_FROM_SUPPLIER", "REFILL_DISPATCH_TO_PLANT", "REFILL_RECEIPT_FROM_PLANT", "LOADING_TO_TRUCK", "UNLOADING_FROM_TRUCK", "DELIVERY_TO_CUSTOMER", "EMPTY_RECOVERY_FROM_CUSTOMER", "DAMAGED_QUARANTINE", "WRITE_OFF"
+  transactionType String
+  
+  notes           String?
+  createdAt       DateTime                @default(now()) // Immutable timestamp
+}
+
+/// Chart of Accounts structure supporting multi-tenancy.
+model FinancialAccount {
+  id          String            @id @default(uuid())
+  tenantId    String
+  tenant      Tenant            @relation(fields: [tenantId], references: [id])
+  name        String            // e.g., "Accounts Receivable", "Cash in Transit"
+  code        String            // unique code like "1100", "1200"
+  
+  /// Account type: "ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"
+  type        String
+  
+  balance     Float             @default(0.0) // running balance
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  // Relations
+  ledgerEntries FinancialLedger[]
+
+  @@unique([tenantId, code])
+}
+
+/// Financial Ledger transaction table implementing double-entry rules.
+/// For any given batchId, sum(debit) must equal sum(credit).
+/// To prevent fraud, records in this table can NEVER be updated or deleted.
+model FinancialLedger {
+  id              String                   @id @default(uuid())
+  tenantId        String
+  tenant          Tenant                   @relation(fields: [tenantId], references: [id])
+  batchId         String                   // UUID grouping debit and credit lines of a single transaction
+  accountId       String
+  account         FinancialAccount         @relation(fields: [accountId], references: [id])
+  
+  // Ledger debit and credit amounts (must be >= 0)
+  debit           Float                    @default(0.0)
+  credit          Float                    @default(0.0)
+  
+  // References
+  customerId      String?
+  customer        Customer?                @relation(fields: [customerId], references: [id])
+  userId          String?                  // Associated driver or agent
+  user            User?                    @relation(fields: [userId], references: [id])
+  shiftSessionId  String?
+  shiftSession    DriverShift?             @relation(fields: [shiftSessionId], references: [id])
+  orderId         String?
+  order           Order?                   @relation(fields: [orderId], references: [id])
+  expenseClaimId  String?
+  expenseClaim    ExpenseClaim?            @relation(fields: [expenseClaimId], references: [id])
+  
+  description     String
+  
+  /// Financial Transaction Type: "INVOICE", "PAYMENT", "EXPENSE", "SHORTAGE_SUSPENSE", "OVERAGE_ADJUSTMENT", "GENERAL_ADJUSTMENT"
+  transactionType String
+  
+  isReconciled    Boolean                  @default(false)
+  reconciledAt    DateTime?
+  createdAt       DateTime                 @default(now()) // Immutable timestamp
+}
+
+/// Expense claims logged by drivers in the field.
+model ExpenseClaim {
+  id              String          @id @default(uuid())
+  tenantId        String
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+  driverId        String
+  driver          User            @relation("Claimant", fields: [driverId], references: [id])
+  shiftSessionId  String
+  shiftSession    DriverShift     @relation(fields: [shiftSessionId], references: [id])
+  
+  /// Expense category: "FUEL", "TOLL", "MAINTENANCE", "MEALS", "MISC"
+  category        String
+  
+  amount          Float
+  description     String?
+  receiptUrl      String?         // URL to receipt image bucket (mandatory if amount >= $10)
+  receiptHash     String?         // Cryptographic hash for duplicate uploads checks
+  odometer        Float?          // Required if category is FUEL
+  latitude        Float?          // GPS coordinate check
+  longitude       Float?
+  
+  /// Expense status: "AWAITING_APPROVAL", "APPROVED", "REJECTED"
+  status          String          @default("AWAITING_APPROVAL")
+  
+  approvedById    String?
+  approvedBy      User?           @relation("Approver", fields: [approvedById], references: [id])
+  approvalNotes   String?
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  financialLedgers FinancialLedger[]
+}
+
+/// Immutable security audits recording user mutations.
+model AuditLog {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  action      String   // e.g. "CUSTOMER_BLOCKED", "ORDER_OVERRIDE"
+  entityName  String   // e.g. "Customer", "Order"
+  entityId    String
+  preState    String?  // JSON string representing state before update
+  postState   String?  // JSON string representing state after update
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now()) // Immutable timestamp
+}
