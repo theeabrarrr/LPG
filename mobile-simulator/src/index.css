@@ -697,3 +697,46 @@ select.dropdown-select {
 [dir="rtl"] .counter-controls {
   flex-direction: row-reverse;
 }
+
+/* Make the simulator look like a native full-screen app on real mobile devices */
+@media (max-width: 600px) {
+  body {
+    background-color: #000000;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+  }
+  .simulator-layout {
+    flex-direction: column;
+    padding: 0;
+    gap: 0;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+  }
+  .phone-wrapper {
+    width: 100% !important;
+    height: 100vh !important;
+    max-height: 100% !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+  .phone-notch {
+    display: none !important;
+  }
+  .phone-status-bar {
+    display: none !important;
+  }
+  .phone-screen {
+    border-radius: 0 !important;
+    padding: 10px 10px 10px 10px !important;
+  }
+  .sync-logger-panel {
+    display: none !important; /* Hide debug logger panel on actual mobile screens */
+  }
+  .offline-switch-container {
+    margin-top: 5px;
+  }
+}
